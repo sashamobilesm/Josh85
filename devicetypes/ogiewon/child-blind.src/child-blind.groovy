@@ -32,8 +32,8 @@ metadata {
 	tiles(scale: 2) {
     
         // standard tile with actions
-     		multiAttributeTile(name:"windowShade", type: "generic", width: 3, height: 4, canChangeIcon: true){
-			tileAttribute ("windowShade", key: "PRIMARY_CONTROL") {
+     		multiAttributeTile(name:"blind", type: "generic", width: 3, height: 4, canChangeIcon: true){
+			tileAttribute ("blind", key: "PRIMARY_CONTROL") {
 				attributeState "closed", label: '${name}', action: "windowShade.open", icon: "st.switches.switch.off", backgroundColor: "#ffffff", nextState:"opening"
 				attributeState "open", label: '${name}', action: "windowShade.close", icon: "st.switches.switch.on", backgroundColor: "#00A0DC", nextState:"closing"
 				attributeState "opening", label:'${name}', action:"windowShade.close", icon:"st.switches.switch.on", backgroundColor:"#00A0DC", nextState:"closing"
@@ -46,14 +46,14 @@ metadata {
 
 void open() {
 	parent.childOpen(device.deviceNetworkId)
-    sendEvent(name: "windowShade", value: "open")
-    sendEvent(name: "switch", value: "on")
+    //sendEvent(name: "windowShade", value: "open")
+    //sendEvent(name: "switch", value: "on")
 }
 
 void close() {
 	parent.childClose(device.deviceNetworkId)
-    sendEvent(name: "windowShade", value: "closed")
-    sendEvent(name: "switch", value: "off")
+    //sendEvent(name: "windowShade", value: "closed")
+    //sendEvent(name: "switch", value: "off")
 }
 
 void on(){
