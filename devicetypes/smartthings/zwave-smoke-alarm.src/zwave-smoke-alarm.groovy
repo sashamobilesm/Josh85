@@ -22,6 +22,7 @@ metadata {
 		attribute "alarmState", "string"
 
 		fingerprint deviceId: "0xA100", inClusters: "0x20,0x80,0x70,0x85,0x71,0x72,0x86"
+		fingerprint mfr:"0138", prod:"0001", model:"0001", deviceJoinName: "First Alert Smoke Detector"
 		fingerprint mfr:"0138", prod:"0001", model:"0002", deviceJoinName: "First Alert Smoke Detector and Carbon Monoxide Alarm (ZCOMBO)"
 	}
 
@@ -53,7 +54,12 @@ metadata {
 	}
 }
 
-def updated(){
+def installed() {
+// Device checks in every hour, this interval allows us to miss one check-in notification before marking offline
+	sendEvent(name: "checkInterval", value: 2 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
+}
+
+def updated() {
 // Device checks in every hour, this interval allows us to miss one check-in notification before marking offline
 	sendEvent(name: "checkInterval", value: 2 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
 }

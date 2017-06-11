@@ -33,7 +33,6 @@ metadata {
 		fingerprint inClusters: "0000,0001,0003,0402,0500,0020,0B05,FC02", outClusters: "0019", manufacturer: "CentraLite", model: "3320"
 		fingerprint inClusters: "0000,0001,0003,0402,0500,0020,0B05,FC02", outClusters: "0019", manufacturer: "CentraLite", model: "3321"
 		fingerprint inClusters: "0000,0001,0003,0402,0500,0020,0B05,FC02", outClusters: "0019", manufacturer: "CentraLite", model: "3321-S", deviceJoinName: "Multipurpose Sensor"
-		fingerprint inClusters: "0000,0001,0003,0020,0402,0500,0B05", outClusters: "0019", manufacturer: "CentraLite", model: "3323-G", deviceJoinName: "Centralite Micro Door Sensor"
 		fingerprint inClusters: "0000,0001,0003,000F,0020,0402,0500,FC02", outClusters: "0019", manufacturer: "SmartThings", model: "multiv4", deviceJoinName: "Multipurpose Sensor"
 
 		attribute "status", "string"
@@ -88,8 +87,8 @@ metadata {
 			state("closed", label: 'Closed', icon: "st.contact.contact.closed", backgroundColor: "#00a0dc")
 		}
 		standardTile("acceleration", "device.acceleration", width: 2, height: 2) {
-			state("active", label: 'Active', icon: "st.motion.acceleration.active", backgroundColor: "#53a7c0")
-			state("inactive", label: 'Inactive', icon: "st.motion.acceleration.inactive", backgroundColor: "#ffffff")
+			state("active", label: 'Active', icon: "st.motion.acceleration.active", backgroundColor: "#00a0dc")
+			state("inactive", label: 'Inactive', icon: "st.motion.acceleration.inactive", backgroundColor: "#cccccc")
 		}
 		valueTile("temperature", "device.temperature", width: 2, height: 2) {
 			state("temperature", label: '${currentValue}°',
@@ -179,7 +178,7 @@ private List<Map> handleAcceleration(descMap) {
 			result += parseAxis(descMap.additionalAttrs)
 		}
 	} else if (descMap.clusterInt == 0xFC02 && descMap.attrInt == 0x0012) {
-		def addAttrs = descMap.additionalAttrs
+		def addAttrs = descMap.additionalAttrs ?: []
 		addAttrs << ["attrInt": descMap.attrInt, "value": descMap.value]
 		result += parseAxis(addAttrs)
 	}
@@ -191,6 +190,10 @@ private List<Map> parseAxis(List<Map> attrData) {
 	def x = hexToSignedInt(attrData.find { it.attrInt == 0x0012 }?.value)
 	def y = hexToSignedInt(attrData.find { it.attrInt == 0x0013 }?.value)
 	def z = hexToSignedInt(attrData.find { it.attrInt == 0x0014 }?.value)
+
+	if ([x, y ,z].any { it == null }) {
+		return []
+	}
 
 	def xyzResults = [:]
 	if (device.getDataValue("manufacturer") == "SmartThings") {
@@ -372,6 +375,10 @@ def updated() {
 }
 
 private hexToSignedInt(hexVal) {
+	if (!hexVal) {
+		return null
+	}
+
 	def unsignedVal = hexToInt(hexVal)
 	unsignedVal > 32767 ? unsignedVal - 65536 : unsignedVal
 }
