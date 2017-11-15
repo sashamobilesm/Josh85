@@ -32,6 +32,8 @@ mappings {
 
 preferences {
 	page(name: "auth", title: "Honeywell", nextPage:"", content:"authPage", uninstall: true, install:true)
+    page(name: "selectDevices", title: "Device Selection", nextPage:"", content:"selectDevicesPage", uninstall: true, install:true)
+
     }
 
 //Prod
@@ -40,6 +42,8 @@ private static String LyricAPIKey() {return "G4xxucb3RK4QbvcJdFIChsLNI8zhgDEK"}
 private static String LyricAPISecret() {return "PCfhfrVf2V8gLBNZ"}
 //Dev
 //def LyricAPIEndpoint = ""
+
+def getChildName() { return "Lyric Leak Sensor" }
 
 // TODO: revokeAccessToken() on uninstall
 
@@ -57,7 +61,30 @@ def updated() {
 }
 
 def initialize() {
-    // TODO: subscribe to attributes, devices, locations, etc.
+	log.debug "initialize"
+	def devices = devices.collect { dni ->
+		def d = getChildDevice(dni)
+		if(!d) {
+			d = addChildDevice(app.namespace, getChildName(), dni, null, ["label":"${state.devices[dni]}" ?: "Lyric Leak Sensor"])
+			log.debug "created ${d.displayName} with id $dni"
+		} else {
+			log.debug "found ${d.displayName} with id $dni already exists"
+		}
+		return d
+	}
+    
+	log.debug "created ${devices.size()} leak sensors."
+
+	def delete  // Delete any that are no longer in settings
+	if(!devices) {
+		log.debug "delete all leak sensors"
+		delete = getAllChildDevices() //inherits from SmartApp (data-management)
+	} else {
+		log.debug "delete individual thermostat and sensor"
+		delete = getChildDevices().findAll { !devices.contains(it.deviceNetworkId)}
+	}
+	log.warn "delete: ${delete}, deleting ${delete.size()} leak sensors"
+	delete.each { deleteChildDevice(it.deviceNetworkId) } //inherits from SmartApp (data-management)
 }
 
 def authPage() {
@@ -91,9 +118,10 @@ def authPage() {
             }
         }
     } else {
+        refreshAuthToken()
         def locations = getLocations()
-        log.debug "location list: $locations"
-        return dynamicPage(name: "auth", title: "Select Your Location", uninstall:uninstallAllowed) {
+        log.debug "available location list: $locations"
+        return dynamicPage(name: "auth", title: "Select Your Location", nextPage: "selectDevices", uninstall:uninstallAllowed) {
             section("") {
                 paragraph "Tap below to see the list of locations available in your Honeywell account and select the ones you want to connect to SmartThings."
                 input(name: "Locations", title:"Select Your Location(s)", type: "enum", required:false, multiple:true, description: "Tap to choose", metadata:[values:locations])
@@ -188,10 +216,10 @@ private getLocations() {
                     resp.data.each { loc ->
                     try{
                         //def dni = [app.id, loc.locationID].join('.')
-                        log.debug "Found Location ID: ${loc.locationID} Name: ${loc.name}"
+                        //log.debug "Found Location ID: ${loc.locationID} Name: ${loc.name}"
                         locs[loc.locationID] = loc.name
                         state.locations = state.locations == null ? loc : state.locations <<  locs
-                        log.debug "State.Locations = ${state.locations}"
+                        //log.debug "State.Locations = ${state.locations}"
                         }
                      catch (e) {
                         log.debug "Error $e"
@@ -214,9 +242,72 @@ private getLocations() {
         return locs
 }
 
+def selectDevicesPage(){
+    def devs = [:]
+    settings.Locations.each { loc ->
+     log.debug "Getting devices for $loc"
+     devs += getDevices(loc)
+    }
+        log.debug "available devices list: $devs"
+        return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "", uninstall:uninstallAllowed) {
+            section("") {
+                paragraph "Tap below to see the list of devices available in your Honeywell account and select the ones you want to connect to SmartThings."
+                input(name: "Devices", title:"Select Your Device(s)", type: "enum", required:false, multiple:true, description: "Tap to choose", metadata:[values:devs])
+            }
+        }
+}
+
+
+private getDevices(locID) {
+        def Params = [
+        	uri: LyricAPIEndpoint(),
+            path: "/v2/devices",
+        	headers: ['Authorization': "Bearer ${state.authToken}"],
+            query: [
+                apikey: LyricAPIKey(),
+                locationid: locID
+            ],
+        ]
+        
+        def devs = [:]
+        try {
+            httpGet(Params) { resp ->
+            	log.debug "getDevices httpGet response = ${resp.data}"
+                if(resp.status == 200)
+                {	
+                    state.devices = []
+                    resp.data.each { dev ->
+                    try{
+                        def dni = [app.id, dev.deviceID].join('.')
+                        //def dni = dev.deviceID
+                        log.debug "Found device ID: ${dni} Name: ${dev.userDefinedDeviceName}"
+                        devs[dni] = dev.userDefinedDeviceName
+                        state.devices = state.devices == null ? dev : state.devices <<  devs
+                        log.debug "state.devices = ${state.devices}"
+                        }
+                     catch (e) {
+                        log.debug "Error $e"
+                     }
+				}
+                } 
+                else
+                {
+                    if (resp.status == 401) 
+                    {
+                        refreshAuthToken()
+                    }
+                }
+            }
+          }
+        catch (e) {
+            log.debug "something went wrong: $e"
+            refreshAuthToken()
+        }
+        return devs
+}
+
 private String getBase64AuthString() {
     String authorize = "${LyricAPIKey()}:${LyricAPISecret()}"
-    //String authorize = "${appSettings.clientId}:${appSettings.clientSecret}"
     String authorize_encoded = authorize.bytes.encodeBase64()
     return authorize_encoded
 }
