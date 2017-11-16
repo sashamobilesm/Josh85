@@ -59,6 +59,11 @@ def updated() {
     initialize()
 }
 
+def uninstalled() {
+    def delete = getAllChildDevices()
+    delete.each { deleteChildDevice(it.deviceNetworkId) }
+}
+
 def initialize() {
 	log.debug "initialize"
 	def devs = settings.devices.collect { dni ->
