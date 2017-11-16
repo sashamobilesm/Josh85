@@ -31,9 +31,8 @@ mappings {
 }
 
 preferences {
-	page(name: "auth", title: "Honeywell", nextPage:"", content:"authPage", uninstall: true, install:true)
-    page(name: "selectDevices", title: "Device Selection", nextPage:"", content:"selectDevicesPage", uninstall: true, install:true)
-
+	page(name: "auth", title: "Honeywell", content:"authPage", install:false)
+    page(name: "selectDevices", title: "Device Selection", nextPage:"", content:"selectDevicesPage", install:true)
     }
 
 //Prod
@@ -62,10 +61,11 @@ def updated() {
 
 def initialize() {
 	log.debug "initialize"
-	def devices = devices.collect { dni ->
+	def devs = settings.devices.collect { dni ->
+    	//log.debug "processing ${dni}"
 		def d = getChildDevice(dni)
 		if(!d) {
-			d = addChildDevice(app.namespace, getChildName(), dni, null, ["label":"${state.devices[dni]}" ?: "Lyric Leak Sensor"])
+			d = addChildDevice(app.namespace, getChildName(), dni, null, ["label":"${state.devices[dni]} Lyric" ?: "Lyric Leak Sensor"])
 			log.debug "created ${d.displayName} with id $dni"
 		} else {
 			log.debug "found ${d.displayName} with id $dni already exists"
@@ -73,15 +73,15 @@ def initialize() {
 		return d
 	}
     
-	log.debug "created ${devices.size()} leak sensors."
+	//log.debug "created ${devs.size()} leak sensors."
 
 	def delete  // Delete any that are no longer in settings
-	if(!devices) {
-		log.debug "delete all leak sensors"
+	if(!devs) {
+		//log.debug "delete all leak sensors"
 		delete = getAllChildDevices() //inherits from SmartApp (data-management)
 	} else {
-		log.debug "delete individual thermostat and sensor"
-		delete = getChildDevices().findAll { !devices.contains(it.deviceNetworkId)}
+		//log.debug "delete individual thermostat and sensor"
+		delete = getChildDevices().findAll { !settings.devices.contains(it.deviceNetworkId)}
 	}
 	log.warn "delete: ${delete}, deleting ${delete.size()} leak sensors"
 	delete.each { deleteChildDevice(it.deviceNetworkId) } //inherits from SmartApp (data-management)
@@ -124,7 +124,7 @@ def authPage() {
         return dynamicPage(name: "auth", title: "Select Your Location", nextPage: "selectDevices", uninstall:uninstallAllowed) {
             section("") {
                 paragraph "Tap below to see the list of locations available in your Honeywell account and select the ones you want to connect to SmartThings."
-                input(name: "Locations", title:"Select Your Location(s)", type: "enum", required:false, multiple:true, description: "Tap to choose", metadata:[values:locations])
+                input(name: "Locations", title:"Select Your Location(s)", type: "enum", required:true, multiple:true, description: "Tap to choose", metadata:[values:locations])
             }
         }
     }
@@ -146,11 +146,9 @@ def oauthInitUrl() {
     redirect(location: "${LyricAPIEndpoint()}/oauth2/authorize?${toQueryString(oauthParams)}")
 }
 
-// The toQueryString implementation simply gathers everything in the passed in map and converts them to a string joined with the "&" character.
 String toQueryString(Map m) {
         return m.collect { k, v -> "${k}=${URLEncoder.encode(v.toString())}" }.sort().join("&")
 }
-
 
 def callback() {
     log.debug "callback()>> params: $params, params.code ${params.code}"
@@ -247,16 +245,16 @@ def selectDevicesPage(){
     settings.Locations.each { loc ->
      log.debug "Getting devices for $loc"
      devs += getDevices(loc)
+     state.devices = devs
     }
-        log.debug "available devices list: $devs"
-        return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "", uninstall:uninstallAllowed) {
+        log.debug "available devices list: ${state.devices}"
+        return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "", uninstall:false, install:true) {
             section("") {
                 paragraph "Tap below to see the list of devices available in your Honeywell account and select the ones you want to connect to SmartThings."
-                input(name: "Devices", title:"Select Your Device(s)", type: "enum", required:false, multiple:true, description: "Tap to choose", metadata:[values:devs])
+                input(name: "devices", title:"Select Your Device(s)", type: "enum", required:false, multiple:true, description: "Tap to choose", metadata:[values:devs])
             }
         }
 }
-
 
 private getDevices(locID) {
         def Params = [
@@ -265,7 +263,7 @@ private getDevices(locID) {
         	headers: ['Authorization': "Bearer ${state.authToken}"],
             query: [
                 apikey: LyricAPIKey(),
-                locationid: locID
+                locationId: locID
             ],
         ]
         
@@ -275,15 +273,12 @@ private getDevices(locID) {
             	log.debug "getDevices httpGet response = ${resp.data}"
                 if(resp.status == 200)
                 {	
-                    state.devices = []
                     resp.data.each { dev ->
                     try{
                         def dni = [app.id, dev.deviceID].join('.')
                         //def dni = dev.deviceID
                         log.debug "Found device ID: ${dni} Name: ${dev.userDefinedDeviceName}"
                         devs[dni] = dev.userDefinedDeviceName
-                        state.devices = state.devices == null ? dev : state.devices <<  devs
-                        log.debug "state.devices = ${state.devices}"
                         }
                      catch (e) {
                         log.debug "Error $e"
@@ -364,16 +359,14 @@ def executePost(Params) {
         }
 }
 
-// Example success method
 def success() {
         def message = """
-                <p>Your account is now connected to SmartThings!</p>
-                <p>Click 'Done' to finish setup.</p>
+                <p><h1>Your account is now connected to SmartThings!</h1></p>
+                <p><h2>Click 'Done' to finish setup.</h2></p>
         """
         displayMessageAsHtml(message)
 }
 
-// Example fail method
 def fail() {
     def message = """
         <p>There was an error connecting your account with SmartThings</p>
