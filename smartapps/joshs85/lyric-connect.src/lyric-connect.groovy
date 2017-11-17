@@ -90,6 +90,10 @@ def initialize() {
 	}
 	log.warn "delete: ${delete}, deleting ${delete.size()} leak sensors"
 	delete.each { deleteChildDevice(it.deviceNetworkId) } //inherits from SmartApp (data-management)
+	
+    pollChildren()
+    
+	runEvery5Minutes("pollChildren")
 }
 
 def authPage() {
@@ -247,10 +251,16 @@ private getLocations() {
 
 def selectDevicesPage(){
     def devs = [:]
+    state.devicelocations = [:]
+    state.deviceids = [:]
     settings.Locations.each { loc ->
      log.debug "Getting devices for $loc"
      devs += getDevices(loc)
      state.devices = devs
+     devs.each { dev -> 
+     	state.devicelocations[dev.key] = loc
+     }
+     //log.debug "devicelocations = ${state.devicelocations}"
     }
         log.debug "available devices list: ${state.devices}"
         return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "", uninstall:false, install:true) {
@@ -281,9 +291,9 @@ private getDevices(locID) {
                     resp.data.each { dev ->
                     try{
                         def dni = [app.id, dev.deviceID].join('.')
-                        //def dni = dev.deviceID
                         log.debug "Found device ID: ${dni} Name: ${dev.userDefinedDeviceName}"
                         devs[dni] = dev.userDefinedDeviceName
+                        state.deviceids[dni] = dev.deviceID
                         }
                      catch (e) {
                         log.debug "Error $e"
@@ -341,6 +351,53 @@ private refreshAuthToken() {
 
 }
 
+def pollChildren(){
+		refreshAuthToken()
+		state.devicedetails = [:]
+		settings.devices.each {dev ->
+            def deviceid = state.deviceids[dev]
+            def locationid = state.devicelocations[dev]
+            def d = getChildDevice(dev)
+            def Params = [
+                uri: LyricAPIEndpoint(),
+                path: "/v2/devices/waterLeakDetectors/${deviceid}",
+                headers: ['Authorization': "Bearer ${state.authToken}"],
+                query: [
+                    apikey: LyricAPIKey(),
+                    locationId: locationid
+                ],
+            ]
+
+            httpGet(Params) { resp ->
+                state.devicedetails[dev] = resp.data
+                
+                def waterPresent = resp.data.waterPresent == true ? "wet" : "dry"
+                def humidity = resp.data.currentSensorReadings.humidity
+                def tempC = resp.data.currentSensorReadings.temperature
+                def battery = resp.data.batteryRemaining
+                def offline = resp.data.isDeviceOffline
+                def temphigh = resp.data.deviceSettings.temp.high.limit
+                def templow = resp.data.deviceSettings.temp.low.limit
+                def tempAlarm = "normal"
+                if (tempC <= temphigh && tempC >= templow) {tempAlarm = "normal"}
+                else if (tempC > temphigh) {tempAlarm = "overheated"}
+                else if (tempC < templow) {tempAlarm = "freezing"}
+                def events = [
+                	['water': waterPresent],
+                    ['temperature': tempC],
+                    ['humidity': humidity],
+                    ['battery': battery],
+                    ['powerSource': 'battery'],
+                    ['DeviceStatus': offline == true ? "offline" : "online"],
+                    ['temperatureAlarm': tempAlarm],
+                	]
+                log.debug "Sending events: ${events}"
+                events.each {event -> d.generateEvent(event)}
+                log.debug "device data for ${deviceid} = ${state.devicedetails[dev]}"
+            }
+    }
+}
+
 def executePost(Params) {
 	try {
             httpPost(Params) { resp ->
@@ -394,4 +451,15 @@ def displayMessageAsHtml(message) {
         </html>
     """
     render contentType: 'text/html', data: html
+}
+
+def sendActivityFeeds(notificationMessage) {
+	def devices = getChildDevices()
+	devices.each { child ->
+		child.generateActivityFeedsEvent(notificationMessage) //parse received message from parent
+	}
+}
+
+def convertFtoC (tempF) {
+	return String.format("%.1f", (Math.round(((tempF - 32)*(5/9)) * 2))/2)
 }
