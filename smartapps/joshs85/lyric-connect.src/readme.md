@@ -8,9 +8,9 @@
 7. Enter master for the branch.
 8. Click save when completed
 9. Do the same on the my device handlers page.
-10. On the My Device handlers pages, click Update from repo and check the check box next to smartapps/joshs85/lyric-connect.src/lyric-connect.groovy
+10. On the My Smart Apps page, click Update from repo and check the check box next to smartapps/joshs85/lyric-connect.src/lyric-connect.groovy
 11. Check the publish box at the bottom of the screen and then click Execute Update
-12. On the My Device handlers pages, click Update from repo and check the check box next to devicetypes/joshs85/lyric-leak-sensor.src/lyric-leak-sensor.groovy
+12. On the My Device Handlers Page, click Update from repo and check the check box next to devicetypes/joshs85/lyric-leak-sensor.src/lyric-leak-sensor.groovy
 13. Check the publish box at the bottom of the screen and then click Execute Update
 
 ### Create A HoneyWell Developer account
