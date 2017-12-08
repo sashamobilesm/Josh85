@@ -405,6 +405,7 @@ def pollChildren(){
             
             log.debug "starting httpGet with Params = ${Params}"
             httpGet(Params) { resp ->
+            try{
                 state.devicedetails[dev] = resp.data
                 
                 def waterPresent = resp.data.waterPresent == true ? "wet" : "dry"
@@ -431,6 +432,11 @@ def pollChildren(){
                 log.debug "Sending events: ${events}"
                 events.each {event -> d.generateEvent(event)}
                 log.debug "device data for ${deviceid} = ${state.devicedetails[dev]}"
+                }
+                catch (e)
+                {
+                	log.debug "Error while processing events for pollChildren: ${e}"
+				}
             }
     }
 }
