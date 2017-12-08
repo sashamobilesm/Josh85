@@ -42,7 +42,7 @@ metadata {
 			state "overheated", icon:"st.alarm.temperature.overheat", backgroundColor:"#e86d13"
 		}
 		valueTile("temperature", "device.temperature", width: 2, height: 2) {
-            state("temperature", label:'${currentValue}°C',
+            state("temperature", label:'${currentValue}°',
                 backgroundColors:[
 							// Celsius
 							[value: 0, color: "#153591"],
@@ -76,7 +76,6 @@ metadata {
 		details(["water", "temperatureAlarm", "temperature", "humidity", "battery", "refresh"])
 }
 
-
 	simulator {
 		// TODO: define status and reply messages here
 	}
@@ -91,8 +90,6 @@ void installed() {
 def parse(String description) {
 	log.debug "Parsing '${description}'"
 }
-
-
 
 def refresh() {
 	log.debug "refresh called"
