@@ -24,6 +24,10 @@ definition(
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     singleInstance: true
     )
+{
+    appSetting "LyricAPI_Key"
+    appSetting "LyricAPI_Secret"
+}
 
 mappings {
     path("/oauth/initialize") {action: [GET: "oauthInitUrl"]}
@@ -38,8 +42,8 @@ preferences {
 
 //Prod
 private static String LyricAPIEndpoint() { return "https://api.honeywell.com" }
-private static String LyricAPIKey() {return "G4xxucb3RK4QbvcJdFIChsLNI8zhgDEK"}
-private static String LyricAPISecret() {return "PCfhfrVf2V8gLBNZ"}
+private String LyricAPIKey() {return appSettings.LyricAPI_Key}
+private String LyricAPISecret() {return appSettings.LyricAPI_Secret}
 def getChildName() { return "Lyric Leak Sensor" }
 
 // TODO: revokeAccessToken() on uninstall
