@@ -22,7 +22,7 @@
 6. Click Save Changes
 
 ### Configure the app settings and enable oAuth.
-1. In the SmartThings API, Click on Device Handlers
+1. In the SmartThings API, Click on My Smart Apps
 2. Click the new Lyric (Connect) app
 3. Click App Settings
 4. Click Settings and enter the API Key and Secret from the honeywell app you created above.
