@@ -16,7 +16,7 @@
 definition(
     name: "Lyric (Connect)",
     namespace: "joshs85",
-    author: "Joshua Spain",
+    author: "Joshua S",
     description: "Virtual device handler for Lyric Leak sensor",
     category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
@@ -32,16 +32,14 @@ mappings {
 
 preferences {
 	page(name: "auth", title: "Honeywell", content:"authPage", install:false)
-    page(name: "selectDevices", title: "Device Selection", nextPage:"", content:"selectDevicesPage", install:true)
+    page(name: "selectDevices", title: "Device Selection", content:"selectDevicesPage", install:false)
+    page(name: "settings", title: "Settings", content: "settingsPage", install:true)
     }
 
 //Prod
 private static String LyricAPIEndpoint() { return "https://api.honeywell.com" }
 private static String LyricAPIKey() {return "G4xxucb3RK4QbvcJdFIChsLNI8zhgDEK"}
 private static String LyricAPISecret() {return "PCfhfrVf2V8gLBNZ"}
-//Dev
-//def LyricAPIEndpoint = ""
-
 def getChildName() { return "Lyric Leak Sensor" }
 
 // TODO: revokeAccessToken() on uninstall
@@ -91,22 +89,29 @@ def initialize() {
 	log.warn "delete: ${delete}, deleting ${delete.size()} leak sensors"
 	delete.each { deleteChildDevice(it.deviceNetworkId) } //inherits from SmartApp (data-management)
 	
-    pollChildren()
+    try{
+    	pollChildren()
+    }
+    catch (e)
+    {
+    	log.debug "Error with initial polling: $e"
+    }
     
-	runEvery5Minutes("pollChildren")
+	runEvery1Minute("pollChildren")
 }
 
 def authPage() {
-    if(!state.accessToken) {
-        // the createAccessToken() method will store the access token in state.accessToken
+    if(!atomicState.accessToken) {
+        // the createAccessToken() method will store the access token in atomicState.accessToken
         createAccessToken()
+        atomicState.accessToken = state.accessToken
     }
     
     def description
     def uninstallAllowed = false
     def oauthTokenProvided = false
 
-    if(state.authToken) {
+    if(atomicState.authToken) {
         description = "You are connected."
         uninstallAllowed = true
         oauthTokenProvided = true
@@ -114,10 +119,10 @@ def authPage() {
         description = "Click to enter Honeywell Credentials"
     }
 
-    def redirectUrl = "https://graph.api.smartthings.com/oauth/initialize?appId=${app.id}&access_token=${state.accessToken}&apiServerUrl=${getApiServerUrl()}"
+    def redirectUrl = "https://graph.api.smartthings.com/oauth/initialize?appId=${app.id}&access_token=${atomicState.accessToken}&apiServerUrl=${getApiServerUrl()}"
     // Check to see if SmartThings already has an access token from the third-party service.
     if(!oauthTokenProvided) {
-    	//log.debug "Redirect URL (authPage) ${redirectUrl}"
+    	log.debug "Redirect URL (authPage) ${redirectUrl}"
         if (!oauthTokenProvided) {
             return dynamicPage(name: "auth", title: "Login", nextPage: "", uninstall:uninstallAllowed) {
                 section("") {
@@ -142,16 +147,16 @@ def authPage() {
 def oauthInitUrl() {
 
     // Generate a random ID to use as a our state value. This value will be used to verify the response we get back from the third-party service.
-    state.oauthInitState = UUID.randomUUID().toString()
+    atomicState.oauthInitState = UUID.randomUUID().toString()
 
     def oauthParams = [
         response_type: "code",
         scope: "smartRead,smartWrite",
         client_id: LyricAPIKey(),
-        state: state.oauthInitState,
+        state: atomicState.oauthInitState,
         redirect_uri: "https://graph.api.smartthings.com/oauth/callback"
     ]
-	//log.debug "Redirecting to ${LyricAPIEndpoint()}/oauth2/authorize?${toQueryString(oauthParams)}"
+	log.debug "Redirecting to ${LyricAPIEndpoint()}/oauth2/authorize?${toQueryString(oauthParams)}"
     redirect(location: "${LyricAPIEndpoint()}/oauth2/authorize?${toQueryString(oauthParams)}")
 }
 
@@ -165,8 +170,8 @@ def callback() {
     def code = params.code
     def oauthState = params.state
 
-    // Validate the response from the third party by making sure oauthState == state.oauthInitState as expected
-    if (oauthState == state.oauthInitState){
+    // Validate the response from the third party by making sure oauthState == atomicState.oauthInitState as expected
+    if (oauthState == atomicState.oauthInitState){
         def Params = [
         	uri: LyricAPIEndpoint(),
             path: "/oauth2/token",
@@ -180,17 +185,17 @@ def callback() {
         
         try {
             httpPost(Params) { resp ->
-                log.debug "response data: ${resp.data}"
-                state.tokenExpiresIn = resp.data.expires_in
-                state.refreshToken = resp.data.refresh_token
-                state.authToken = resp.data.access_token
+                log.debug "refresh auth token response data: ${resp.data}"
+                atomicState.tokenExpiresIn = resp.data.expires_in
+                atomicState.refreshToken = resp.data.refresh_token
+                atomicState.authToken = resp.data.access_token
             }
         } 
         catch (e) {
-            log.debug "something went wrong: $e"
+            log.debug "Error in the callback mathod: $e"
         }
 
-        if (state.authToken) {
+        if (atomicState.authToken) {
             // call some method that will render the successfully connected message
             success()
         } else {
@@ -199,15 +204,17 @@ def callback() {
         }
 
     } else {
-        log.error "callback() failed. Validation of state did not match. oauthState != state.oauthInitState"
+        log.error "callback() failed. Validation of state did not match. oauthState != atomicState.oauthInitState"
     }
 }
 
 private getLocations() {
+		log.debug "Entering the getLocations method"
+        refreshAuthToken()
         def Params = [
         	uri: LyricAPIEndpoint(),
             path: "/v2/locations",
-        	headers: ['Authorization': "Bearer ${state.authToken}"],
+        	headers: ['Authorization': "Bearer ${atomicState.authToken}"],
             query: [
                 apikey: LyricAPIKey()
             ],
@@ -226,30 +233,23 @@ private getLocations() {
                         //log.debug "Found Location ID: ${loc.locationID} Name: ${loc.name}"
                         locs[loc.locationID] = loc.name
                         state.locations = state.locations == null ? loc : state.locations <<  locs
-                        //log.debug "State.Locations = ${state.locations}"
+                        log.debug "State.Locations = ${state.locations}"
                         }
                      catch (e) {
-                        log.debug "Error $e"
+                        log.debug "Error in getLocations: $e"
                      }
 				}
                 } 
-                else
-                {
-                    if (resp.status == 401) 
-                    {
-                        refreshAuthToken()
-                    }
-                }
             }
           }
         catch (e) {
-            log.debug "something went wrong: $e"
-            refreshAuthToken()
+            log.debug "Error in getLocations: $e"
         }
         return locs
 }
 
 def selectDevicesPage(){
+	log.debug "Entering the selectDevicesPage method"
     def devs = [:]
     state.devicelocations = [:]
     state.deviceids = [:]
@@ -260,10 +260,10 @@ def selectDevicesPage(){
      devs.each { dev -> 
      	state.devicelocations[dev.key] = loc
      }
-     //log.debug "devicelocations = ${state.devicelocations}"
+     log.debug "devicelocations = ${state.devicelocations}"
     }
         log.debug "available devices list: ${state.devices}"
-        return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "", uninstall:false, install:true) {
+        return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "settings", uninstall:false, install:false) {
             section("") {
                 paragraph "Tap below to see the list of devices available in your Honeywell account and select the ones you want to connect to SmartThings."
                 input(name: "devices", title:"Select Your Device(s)", type: "enum", required:false, multiple:true, description: "Tap to choose", metadata:[values:devs])
@@ -271,11 +271,21 @@ def selectDevicesPage(){
         }
 }
 
+private settingsPage(){
+    return dynamicPage(name: "settings", title: "Settings", nextPage: "", uninstall:false, install:true) {
+                section("") {
+                    input "DisplayTempInF", "boolean", title: "Display temperatures in Fahrenheit?", defaultValue: true, required: false
+                }
+            }
+}
+
 private getDevices(locID) {
+		log.debug "Enter getDevices"
+		refreshAuthToken()
         def Params = [
         	uri: LyricAPIEndpoint(),
             path: "/v2/devices",
-        	headers: ['Authorization': "Bearer ${state.authToken}"],
+        	headers: ['Authorization': "Bearer ${atomicState.authToken}"],
             query: [
                 apikey: LyricAPIKey(),
                 locationId: locID
@@ -296,22 +306,14 @@ private getDevices(locID) {
                         state.deviceids[dni] = dev.deviceID
                         }
                      catch (e) {
-                        log.debug "Error $e"
+                        log.debug "Error in getDevices: $e"
                      }
 				}
                 } 
-                else
-                {
-                    if (resp.status == 401) 
-                    {
-                        refreshAuthToken()
-                    }
-                }
             }
           }
         catch (e) {
-            log.debug "something went wrong: $e"
-            refreshAuthToken()
+            log.debug "Error in getDevices: $e"
         }
         return devs
 }
@@ -323,35 +325,68 @@ private String getBase64AuthString() {
 }
 
 private refreshAuthToken() {
-		log.debug "Refreshing your auth_token!"
+		if (testAuthToken() == false) {
+            log.debug "Refreshing your auth_token!"
+            def Params = [
+                uri: LyricAPIEndpoint(),
+                path: "/oauth2/token",
+                headers: ['Authorization': "Basic ${getBase64AuthString()}"],
+                body: [
+                    grant_type: 'refresh_token',
+                    refresh_token: atomicState.refreshToken
+                ],
+            ]
+
+            try {
+                httpPost(Params) { resp ->
+                    log.debug resp.data
+                    if(resp.status == 200)
+                    {
+                        if (resp.data) {
+                            atomicState.refreshToken = resp?.data?.refresh_token
+                            atomicState.authToken = resp?.data?.access_token
+                            log.debug "Token refresh Success."
+                        }
+                    }}
+            }
+            catch (e) {
+                log.debug "something went wrong: $e"
+            }
+
+    }
+}
+
+private testAuthToken() {
         def Params = [
-            uri: LyricAPIEndpoint(),
-            path: "/oauth2/token",
-            headers: ['Authorization': "Basic ${getBase64AuthString()}"],
-            body: [
-                grant_type: 'refresh_token',
-                refresh_token: state.refreshToken
+        	uri: LyricAPIEndpoint(),
+            path: "/v2/locations",
+        	headers: ['Authorization': "Bearer ${atomicState.authToken}"],
+            query: [
+                apikey: LyricAPIKey()
             ],
         ]
         
         try {
-            httpPost(Params) { resp ->
-            	log.debug resp.data
-                if(resp.status == 200)
-                {
-                    if (resp.data) {
-                        state.refreshToken = resp?.data?.refresh_token
-                        state.authToken = resp?.data?.access_token
-                    }
-                }}
+           httpGet(Params) { resp -> 
+            //log.debug "testAuthToken response: ${resp}"
+           	if(resp.status == 200) {
+            	log.debug "Auth code test success. Status: ${resp.status}"
+            	return true
+            }
+            else {
+            	log.debug "Status != 200 while testing current auth code. Response=${resp.data}, Status: ${resp.status}"
+				return false
+            }
+           }
         }
-        catch (e) {
-            log.debug "something went wrong: $e"
-        }
-
+            catch (e) {
+            log.debug "Error while testing auth code: $e"
+            return false
+        	}
 }
 
 def pollChildren(){
+		log.debug "starting pollChildren"
 		refreshAuthToken()
 		state.devicedetails = [:]
 		settings.devices.each {dev ->
@@ -361,30 +396,32 @@ def pollChildren(){
             def Params = [
                 uri: LyricAPIEndpoint(),
                 path: "/v2/devices/waterLeakDetectors/${deviceid}",
-                headers: ['Authorization': "Bearer ${state.authToken}"],
+                headers: ['Authorization': "Bearer ${atomicState.authToken}"],
                 query: [
                     apikey: LyricAPIKey(),
                     locationId: locationid
                 ],
             ]
-
+            
+            log.debug "starting httpGet with Params = ${Params}"
             httpGet(Params) { resp ->
                 state.devicedetails[dev] = resp.data
                 
                 def waterPresent = resp.data.waterPresent == true ? "wet" : "dry"
                 def humidity = resp.data.currentSensorReadings.humidity
-                def tempC = resp.data.currentSensorReadings.temperature
+                def temp = resp.data.currentSensorReadings.temperature
                 def battery = resp.data.batteryRemaining
                 def offline = resp.data.isDeviceOffline
                 def temphigh = resp.data.deviceSettings.temp.high.limit
                 def templow = resp.data.deviceSettings.temp.low.limit
                 def tempAlarm = "normal"
-                if (tempC <= temphigh && tempC >= templow) {tempAlarm = "normal"}
-                else if (tempC > temphigh) {tempAlarm = "overheated"}
-                else if (tempC < templow) {tempAlarm = "freezing"}
+                if (temp <= temphigh && temp >= templow) {tempAlarm = "normal"}
+                else if (temp > temphigh) {tempAlarm = "overheated"}
+                else if (temp < templow) {tempAlarm = "freezing"}
+                if (settings.DisplayTempInF) {temp = convertCtoF(temp)}
                 def events = [
                 	['water': waterPresent],
-                    ['temperature': tempC],
+                    ['temperature': temp],
                     ['humidity': humidity],
                     ['battery': battery],
                     ['powerSource': 'battery'],
@@ -396,29 +433,6 @@ def pollChildren(){
                 log.debug "device data for ${deviceid} = ${state.devicedetails[dev]}"
             }
     }
-}
-
-def executePost(Params) {
-	try {
-            httpPost(Params) { resp ->
-                if(resp.status == 200)
-                {
-                    return resp
-                } 
-                else
-                {
-                    if (resp.status == 401 && resp.data.status.code == 14) 
-                    {
-                        log.debug "Refreshing your auth_token!"
-                        refreshAuthToken()
-                        executePost(Params)
-                    }
-                }
-            }
-          }
-        catch (e) {
-            log.debug "something went wrong: $e"
-        }
 }
 
 def success() {
@@ -460,6 +474,7 @@ def sendActivityFeeds(notificationMessage) {
 	}
 }
 
-def convertFtoC (tempF) {
-	return String.format("%.1f", (Math.round(((tempF - 32)*(5/9)) * 2))/2)
+def convertCtoF(tempC) {
+	float tempF = Math.round((tempC * 1.8) + 32)
+	return String.format("%.1f", tempF)
 }
