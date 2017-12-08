@@ -1,4 +1,4 @@
-# To install
+# Installation Instructions
 1. log into https://graph.api.smartthings.com/
 2. Click My Smart Apps
 3. Click Settings
@@ -13,7 +13,7 @@
 12. On the My Device handlers pages, click Update from repo and check the check box next to devicetypes/joshs85/lyric-leak-sensor.src/lyric-leak-sensor.groovy
 13. Check the publish box at the bottom of the screen and then click Execute Update
 
-# Create A HoneyWell Developer account
+### Create A HoneyWell Developer account
 1. go to https://developer.honeywell.com
 2. Create an account and login.
 3. Click My Apps > Create New App
@@ -21,7 +21,7 @@
 5. Enter this for the callback URL: https://graph.api.smartthings.com/oauth/callback
 6. Click Save Changes
 
-# Configure the app settings and enable oAuth.
+### Configure the app settings and enable oAuth.
 1. In the SmartThings API, Click on Device Handlers
 2. Click the new Lyric (Connect) app
 3. Click App Settings
