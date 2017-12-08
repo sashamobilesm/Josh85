@@ -1,6 +1,6 @@
 # Installation Instructions
 1. log into https://graph.api.smartthings.com/
-2. Click My Smart Apps
+2. Click My Smart Apps (If you don't see any of your smart apps, Click My Locations and then click the correct location first)
 3. Click Settings
 4. Click add new repository
 5. Enter joshs85 for Owner
