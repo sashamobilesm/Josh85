@@ -82,8 +82,8 @@ metadata {
 }
 
 void installed() {
-    // The device refreshes every 5 minutes by default so if we miss 2 refreshes we can consider it offline
-    sendEvent(name: "checkInterval", value: 60 * 12, data: [protocol: "cloud"], displayed: false)
+    // The device refreshes every 1 minutes by default so if we miss 3 refreshes we can consider it offline
+    sendEvent(name: "checkInterval", value: 60 * 3, data: [protocol: "cloud"], displayed: false)
 }
 
 // parse events into attributes
