@@ -46,16 +46,13 @@ private String LyricAPIKey() {return appSettings.LyricAPI_Key}
 private String LyricAPISecret() {return appSettings.LyricAPI_Secret}
 def getChildName() { return "Lyric Leak Sensor" }
 
-// TODO: revokeAccessToken() on uninstall
-
 def installed() {
-    log.debug "Installed with settings: ${settings}"
-
+    log.info "Installed with settings: ${settings}"
     initialize()
 }
 
 def updated() {
-    log.debug "Updated with settings: ${settings}"
+    log.info "Updated with settings: ${settings}"
 
     unsubscribe()
     initialize()
@@ -67,15 +64,15 @@ def uninstalled() {
 }
 
 def initialize() {
-	log.debug "initialize"
+	log.debug "Entering the initialize method"
 	def devs = settings.devices.collect { dni ->
     	//log.debug "processing ${dni}"
 		def d = getChildDevice(dni)
 		if(!d) {
 			d = addChildDevice(app.namespace, getChildName(), dni, null, ["label":"${state.devices[dni]} Lyric" ?: "Lyric Leak Sensor"])
-			log.debug "created ${d.displayName} with id $dni"
+			log.info "created ${d.displayName} with id $dni"
 		} else {
-			log.debug "found ${d.displayName} with id $dni already exists"
+			log.info "found ${d.displayName} with id $dni already exists"
 		}
 		return d
 	}
@@ -106,7 +103,7 @@ def initialize() {
 
 def authPage() {
     if(!atomicState.accessToken) {
-        // the createAccessToken() method will store the access token in atomicState.accessToken
+        // the createAccessToken() method will store the access token in state.accessToken
         createAccessToken()
         atomicState.accessToken = state.accessToken
     }
@@ -136,9 +133,8 @@ def authPage() {
             }
         }
     } else {
-        refreshAuthToken()
         def locations = getLocations()
-        log.debug "available location list: $locations"
+        log.info "available location list: $locations"
         return dynamicPage(name: "auth", title: "Select Your Location", nextPage: "selectDevices", uninstall:uninstallAllowed) {
             section("") {
                 paragraph "Tap below to see the list of locations available in your Honeywell account and select the ones you want to connect to SmartThings."
@@ -196,7 +192,7 @@ def callback() {
             }
         } 
         catch (e) {
-            log.debug "Error in the callback mathod: $e"
+            log.error "Error in the callback mathod: $e"
         }
 
         if (atomicState.authToken) {
@@ -240,14 +236,14 @@ private getLocations() {
                         log.debug "State.Locations = ${state.locations}"
                         }
                      catch (e) {
-                        log.debug "Error in getLocations: $e"
+                        log.error "Error in getLocations: $e"
                      }
 				}
                 } 
             }
           }
         catch (e) {
-            log.debug "Error in getLocations: $e"
+            log.error "Error in getLocations: $e"
         }
         return locs
 }
@@ -310,14 +306,14 @@ private getDevices(locID) {
                         state.deviceids[dni] = dev.deviceID
                         }
                      catch (e) {
-                        log.debug "Error in getDevices: $e"
+                        log.error "Error in getDevices: $e"
                      }
 				}
                 } 
             }
           }
         catch (e) {
-            log.debug "Error in getDevices: $e"
+            log.error "Error in getDevices: $e"
         }
         return devs
 }
@@ -330,7 +326,7 @@ private String getBase64AuthString() {
 
 private refreshAuthToken() {
 		if (testAuthToken() == false) {
-            log.debug "Refreshing your auth_token!"
+            log.info "Refreshing your auth_token!"
             def Params = [
                 uri: LyricAPIEndpoint(),
                 path: "/oauth2/token",
@@ -349,12 +345,13 @@ private refreshAuthToken() {
                         if (resp.data) {
                             atomicState.refreshToken = resp?.data?.refresh_token
                             atomicState.authToken = resp?.data?.access_token
-                            log.debug "Token refresh Success."
+                            atomicState.tokenExpiresIn = resp?.data?.expires_in
+                            log.info "Token refresh Success."
                         }
                     }}
             }
             catch (e) {
-                log.debug "something went wrong: $e"
+                log.error "Error in the refreshAuthToken method: $e"
             }
 
     }
@@ -374,23 +371,23 @@ private testAuthToken() {
            httpGet(Params) { resp -> 
             //log.debug "testAuthToken response: ${resp}"
            	if(resp.status == 200) {
-            	log.debug "Auth code test success. Status: ${resp.status}"
+            	log.info "Auth code test success. Status: ${resp.status}"
             	return true
             }
             else {
-            	log.debug "Status != 200 while testing current auth code. Response=${resp.data}, Status: ${resp.status}"
+            	log.warn "Status != 200 while testing current auth code. Response=${resp.data}, Status: ${resp.status}"
 				return false
             }
            }
         }
             catch (e) {
-            log.debug "Error while testing auth code: $e"
+            log.error "Error while testing auth code: $e"
             return false
         	}
 }
 
 def pollChildren(){
-		log.debug "starting pollChildren"
+		log.info "starting pollChildren"
 		refreshAuthToken()
 		state.devicedetails = [:]
 		settings.devices.each {dev ->
@@ -420,6 +417,7 @@ def pollChildren(){
                 def temphigh = resp.data.deviceSettings.temp.high.limit
                 def templow = resp.data.deviceSettings.temp.low.limit
                 def tempAlarm = "normal"
+                def buzzerMuted = resp.data.deviceSettings.buzzerMuted
                 if (temp <= temphigh && temp >= templow) {tempAlarm = "normal"}
                 else if (temp > temphigh) {tempAlarm = "overheated"}
                 else if (temp < templow) {tempAlarm = "freezing"}
@@ -432,14 +430,15 @@ def pollChildren(){
                     ['powerSource': 'battery'],
                     ['DeviceStatus': offline == true ? "offline" : "online"],
                     ['temperatureAlarm': tempAlarm],
+                    ['buzzerMuted': buzzerMuted],
                 	]
-                log.debug "Sending events: ${events}"
+                log.info "Sending events: ${events}"
                 events.each {event -> d.generateEvent(event)}
                 log.debug "device data for ${deviceid} = ${state.devicedetails[dev]}"
                 }
                 catch (e)
                 {
-                	log.debug "Error while processing events for pollChildren: ${e}"
+                	log.error "Error while processing events for pollChildren: ${e}"
 				}
             }
     }
@@ -475,13 +474,6 @@ def displayMessageAsHtml(message) {
         </html>
     """
     render contentType: 'text/html', data: html
-}
-
-def sendActivityFeeds(notificationMessage) {
-	def devices = getChildDevices()
-	devices.each { child ->
-		child.generateActivityFeedsEvent(notificationMessage) //parse received message from parent
-	}
 }
 
 def convertCtoF(tempC) {
