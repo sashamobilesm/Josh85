@@ -69,11 +69,15 @@ metadata {
 		valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false, width: 2, height: 2) {
 			state "battery", label:'${currentValue}% battery', unit:""
 		}
+        standardTile("buzzerMuted", "device.buzzerMuted",inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+            state "true", icon:"st.quirky.spotter.quirky-spotter-sound-off", label:'Buzzer Muted'
+            state "false", icon:"st.quirky.spotter.quirky-spotter-sound-on", label:'Buzzer'
+        }
         standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
             state "default", action:"refresh.refresh", icon:"st.secondary.refresh"
         }
-		main (["water", "temperatureAlarm"])
-		details(["water", "temperatureAlarm", "temperature", "humidity", "battery", "refresh"])
+		main (["water"])
+		details(["water", "temperatureAlarm", "temperature", "humidity", "battery", "refresh", "buzzerMuted"])
 }
 
 	simulator {
