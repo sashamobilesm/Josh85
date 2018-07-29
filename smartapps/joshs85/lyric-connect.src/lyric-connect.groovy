@@ -22,7 +22,7 @@ definition(
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-    singleInstance: true
+    singleInstance: false
     )
 {
     appSetting "LyricAPI_Key"
@@ -40,7 +40,6 @@ preferences {
     page(name: "settings", title: "Settings", content: "settingsPage", install:true)
     }
 
-//Prod
 private static String LyricAPIEndpoint() { return "https://api.honeywell.com" }
 private String LyricAPIKey() {return appSettings.LyricAPI_Key}
 private String LyricAPISecret() {return appSettings.LyricAPI_Secret}
@@ -69,7 +68,8 @@ def initialize() {
     	//log.debug "processing ${dni}"
 		def d = getChildDevice(dni)
 		if(!d) {
-			d = addChildDevice(app.namespace, getChildName(), dni, null, ["label":"${state.devices[dni]} Lyric" ?: "Lyric Leak Sensor"])
+        	def devlist = atomicState.devices
+			d = addChildDevice(app.namespace, getChildName(), dni, null, ["label":"${devlist[dni]} Lyric" ?: "Lyric Leak Sensor"])
 			log.info "created ${d.displayName} with id $dni"
 		} else {
 			log.info "found ${d.displayName} with id $dni already exists"
@@ -103,7 +103,7 @@ def initialize() {
 
 def authPage() {
     if(!atomicState.accessToken) {
-        // the createAccessToken() method will store the access token in state.accessToken
+        // the createAccessToken() method will store the access token in atomicState.accessToken
         createAccessToken()
         atomicState.accessToken = state.accessToken
     }
@@ -153,7 +153,7 @@ def oauthInitUrl() {
         response_type: "code",
         scope: "smartRead,smartWrite",
         client_id: LyricAPIKey(),
-        state: atomicState.oauthInitState,
+        "state": atomicState.oauthInitState,
         redirect_uri: "https://graph.api.smartthings.com/oauth/callback"
     ]
 	log.debug "Redirecting to ${LyricAPIEndpoint()}/oauth2/authorize?${toQueryString(oauthParams)}"
@@ -226,17 +226,17 @@ private getLocations() {
             	//log.debug "getLocations httpGet response = ${resp.data}"
                 if(resp.status == 200)
                 {	
-                    state.locations = []
+                    atomicState.locations = []
                     resp.data.each { loc ->
                     try{
                         //def dni = [app.id, loc.locationID].join('.')
                         //log.debug "Found Location ID: ${loc.locationID} Name: ${loc.name}"
                         locs[loc.locationID] = loc.name
-                        state.locations = state.locations == null ? loc : state.locations <<  locs
-                        log.debug "State.Locations = ${state.locations}"
+                        atomicState.locations = atomicState.locations == null ? loc : atomicState.locations <<  locs
+                        log.debug "atomicState.Locations = ${atomicState.locations}"
                         }
                      catch (e) {
-                        log.error "Error in getLocations: $e"
+                        log.error "Error in getLocations resp: $e"
                      }
 				}
                 } 
@@ -251,18 +251,18 @@ private getLocations() {
 def selectDevicesPage(){
 	log.debug "Entering the selectDevicesPage method"
     def devs = [:]
-    state.devicelocations = [:]
-    state.deviceids = [:]
+    def devicelocations = [:]
     settings.Locations.each { loc ->
-     log.debug "Getting devices for $loc"
+     log.debug "Getting devices for ${loc}"
      devs += getDevices(loc)
-     state.devices = devs
+     atomicState.devices = devs
      devs.each { dev -> 
-     	state.devicelocations[dev.key] = loc
+     	devicelocations[dev.key] = loc
+        atomicState.devicelocations = devicelocations
      }
-     log.debug "devicelocations = ${state.devicelocations}"
+     log.debug "devicelocations = ${devicelocations}"
     }
-        log.debug "available devices list: ${state.devices}"
+        log.debug "available devices list: ${devs}"
         return dynamicPage(name: "selectDevices", title: "Select Your Devices", nextPage: "settings", uninstall:false, install:false) {
             section("") {
                 paragraph "Tap below to see the list of devices available in your Honeywell account and select the ones you want to connect to SmartThings."
@@ -293,6 +293,7 @@ private getDevices(locID) {
         ]
         
         def devs = [:]
+        def deviceids = [:]
         try {
             httpGet(Params) { resp ->
             	log.debug "getDevices httpGet response = ${resp.data}"
@@ -303,7 +304,7 @@ private getDevices(locID) {
                         def dni = [app.id, dev.deviceID].join('.')
                         log.debug "Found device ID: ${dni} Name: ${dev.userDefinedDeviceName}"
                         devs[dni] = dev.userDefinedDeviceName
-                        state.deviceids[dni] = dev.deviceID
+                        deviceids[dni] = dev.deviceID
                         }
                      catch (e) {
                         log.error "Error in getDevices: $e"
@@ -311,6 +312,7 @@ private getDevices(locID) {
 				}
                 } 
             }
+            atomicState.deviceids = deviceids
           }
         catch (e) {
             log.error "Error in getDevices: $e"
@@ -381,18 +383,20 @@ private testAuthToken() {
            }
         }
             catch (e) {
-            log.error "Error while testing auth code: $e"
-            return false
+            	log.error "Error while testing auth code: $e"
+            	return false
         	}
 }
 
 def pollChildren(){
 		log.info "starting pollChildren"
 		refreshAuthToken()
-		state.devicedetails = [:]
+		atomicState.devicedetails = [:]
+        def deviceids = atomicState.deviceids
+        def devicelocations = atomicState.devicelocations
 		settings.devices.each {dev ->
-            def deviceid = state.deviceids[dev]
-            def locationid = state.devicelocations[dev]
+            def deviceid = deviceids[dev]
+            def locationid = devicelocations[dev]
             def d = getChildDevice(dev)
             def Params = [
                 uri: LyricAPIEndpoint(),
@@ -407,7 +411,9 @@ def pollChildren(){
             log.debug "starting httpGet with Params = ${Params}"
             httpGet(Params) { resp ->
             try{
-                state.devicedetails[dev] = resp.data
+            	def devicedetails = atomicState.devicedetails
+                devicedetails[dev] = resp.data
+                atomicState.devicedetails = devicedetails
                 
                 def waterPresent = resp.data.waterPresent == true ? "wet" : "dry"
                 def humidity = resp.data.currentSensorReadings.humidity
@@ -434,7 +440,7 @@ def pollChildren(){
                 	]
                 log.info "Sending events: ${events}"
                 events.each {event -> d.generateEvent(event)}
-                log.debug "device data for ${deviceid} = ${state.devicedetails[dev]}"
+                log.debug "device data for ${deviceid} = ${devicedetails[dev]}"
                 }
                 catch (e)
                 {
